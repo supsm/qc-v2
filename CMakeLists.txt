@@ -1,0 +1,57 @@
+cmake_minimum_required(VERSION 3.22)
+
+project(QC-v2 LANGUAGES CXX C)
+
+# note: it is recommended to enable CMAKE_UNITY_BUILD when configuring
+# TODO: only do unity build for dpp
+
+if (NOT $<CONFIG:Debug>)
+	include(CheckIPOSupported)
+	check_ipo_supported(RESULT result OUTPUT output)
+	if (result)
+		set(INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+		set(INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+	else()
+		message(WARNING "IPO is not supported. Error: ${output}")
+	endif()
+endif()
+
+set(LIBDEFLATE_BUILD_SHARED_LIB FALSE CACHE INTERNAL "" FORCE)
+set(LIBDEFLATE_COMPRESSION_SUPPORT FALSE CACHE INTERNAL "" FORCE)
+set(LIBDEFLATE_ZLIB_SUPPORT FALSE CACHE INTERNAL "" FORCE)
+set(LIBDEFLATE_BUILD_GZIP FALSE CACHE INTERNAL "" FORCE)
+add_subdirectory(lib/libdeflate-1.23)
+set(LUNASVG_BUILD_EXAMPLES FALSE CACHE INTERNAL "" FORCE)
+set(PLUTOVG_BUILD_EXAMPLES FALSE CACHE INTERNAL "" FORCE)
+set(BUILD_SHARED_LIBS FALSE)
+add_subdirectory(lib/lunasvg-3.1.1)
+#set(BUILD_SHARED_LIBS TRUE)
+set(BUILD_VOICE_SUPPORT FALSE CACHE INTERNAL "" FORCE)
+set(DPP_BUILD_TEST FALSE CACHE INTERNAL "" FORCE)
+set(DPP_NO_VCPKG TRUE CACHE INTERNAL "" FORCE)
+set(DPP_NO_CONAN TRUE CACHE INTERNAL "" FORCE)
+set(DPP_CORO TRUE CACHE INTERNAL "" FORCE)
+set(DPP_FORMATTERS TRUE CACHE INTERNAL "" FORCE)
+add_subdirectory(lib/DPP-10.0.35)
+set_target_properties(dpp PROPERTIES UNITY_BUILD_BATCH_SIZE 32)
+add_subdirectory(lib/jsoncons-1.1.0)
+
+add_executable(playtime_graphs "src/playtime.cpp")
+target_compile_features(playtime_graphs PUBLIC cxx_std_23)
+set_target_properties(playtime_graphs PROPERTIES CXX_EXTENSIONS FALSE)
+target_link_libraries(playtime_graphs PRIVATE lunasvg::lunasvg libdeflate::libdeflate_static)
+
+add_library(file_watcher OBJECT "src/file_watcher.c" "src/file_watcher.cpp")
+target_compile_features(file_watcher PUBLIC c_std_99)
+target_compile_features(file_watcher PRIVATE cxx_std_20)
+set_target_properties(file_watcher PROPERTIES CXX_EXTENSIONS FALSE)
+
+add_executable(log_test "src/log_test.cpp")
+target_compile_features(log_test PUBLIC cxx_std_23)
+set_target_properties(log_test PROPERTIES CXX_EXTENSIONS FALSE)
+target_link_libraries(log_test PRIVATE file_watcher)
+
+add_executable(qc-v2 "src/main.cpp")
+target_compile_features(qc-v2 PUBLIC cxx_std_23)
+set_target_properties(qc-v2 PROPERTIES CXX_EXTENSIONS FALSE)
+target_link_libraries(qc-v2 PRIVATE dpp file_watcher lunasvg::lunasvg libdeflate::libdeflate_static jsoncons)

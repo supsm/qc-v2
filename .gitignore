@@ -1,0 +1,4 @@
+.st*
+.vs/
+build/
+CMakeSettings.json
