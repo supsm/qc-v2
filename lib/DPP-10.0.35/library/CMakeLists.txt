@@ -49,9 +49,14 @@ add_compile_definitions(AVX_TYPE=${AVX_TYPE})
 add_compile_options(${AVX_FLAG})
 
 if(NOT BUILD_SHARED_LIBS)
-	if(UNIX)
-		message("-- Building ${Green}static${ColourReset} library.")
+	message("-- Building ${Green}static${ColourReset} library.")
+else()
+	message("-- Building ${Green}dynamic${ColourReset} library.")
+endif()
 
+if(DPP_STATIC_DEPS)
+	if(UNIX)
+		message("-- Linking to static external dependencies.")
 		if(UNIX AND NOT APPLE)
 			set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 			message("-- INFO: Changed lib suffix to ${CMAKE_FIND_LIBRARY_SUFFIXES}")
@@ -61,10 +66,8 @@ if(NOT BUILD_SHARED_LIBS)
 		set(OPUS_USE_STATIC_LIBS TRUE)
 
 	else()
-		message(WARNING "-- Building of static library not supported on non UNIX systems.")
+		message(WARNING "-- Linking to static external dependencies not supported on non UNIX systems.")
 	endif()
-else()
-	message("-- Building ${Green}dynamic${ColourReset} library.")
 endif()
 
 if (CONAN_EXPORTED)
@@ -134,6 +137,13 @@ if (UNIX)
 			COMMAND php buildtools/emojis.php
 		)
 		set_source_files_properties( "${CMAKE_CURRENT_SOURCE_DIR}/../include/dpp/unicode_emojis.h" PROPERTIES GENERATED TRUE )
+
+		if (DPP_CORO)
+			execute_process(
+				WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+				COMMAND php buildtools/make_struct.php "\\Dpp\\Generator\\CoroGenerator"
+			)
+		endif()
 	else()
 		message("-- Autogeneration is not available")
  	endif()
@@ -183,7 +193,7 @@ if (NOT CONAN_EXPORTED)
 		find_package(OpenSSL REQUIRED)
 	else()
 		if(MINGW OR NOT WIN32)
-			if(NOT BUILD_SHARED_LIBS)
+			if(DPP_STATIC_DEPS)
 				set(OPENSSL_USE_STATIC_LIBS TRUE)
 			endif()
 			find_package(OpenSSL REQUIRED)
@@ -258,7 +268,7 @@ foreach (fullmodname ${subdirlist})
 	if(BUILD_SHARED_LIBS)
 		add_library(${modname} SHARED ${modsrc})
 	else()
-		add_library(${modname} STATIC ${modsrc})
+		add_library(${modname} OBJECT ${modsrc})
 	endif()
 	set_target_properties(${modname} 
 		PROPERTIES
@@ -288,10 +298,7 @@ foreach (fullmodname ${subdirlist})
 				"${CMAKE_CURRENT_SOURCE_DIR}/../win32/lib/opus.lib"
 				"${CMAKE_CURRENT_SOURCE_DIR}/../win32/lib/zlib.lib")
 		else()
-			target_link_libraries(${modname} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../win32/32/lib/libssl.lib"
-				"${CMAKE_CURRENT_SOURCE_DIR}/../win32/32/lib/libcrypto.lib"
-				"${CMAKE_CURRENT_SOURCE_DIR}/../win32/32/lib/opus.lib"
-				"${CMAKE_CURRENT_SOURCE_DIR}/../win32/32/lib/zlib.lib")
+			message(FATAL_ERROR "Windows 32-bit not supported")
 		endif()
 
 	else()
@@ -321,7 +328,7 @@ if (HAVE_VOICE)
 				tls_syntax.a
 				hpke.a
 		)
-		message("-- INFO: Linking static dependencies")
+		message("-- INFO: Linking static internal dependencies")
 	else()
 		target_link_libraries(dpp PRIVATE
 				mlspp
@@ -330,7 +337,7 @@ if (HAVE_VOICE)
 				tls_syntax
 				hpke
 		)
-		message("-- INFO: Linking dynamic dependencies")
+		message("-- INFO: Linking dynamic internal dependencies")
 	endif()
 endif()
 
@@ -402,8 +409,6 @@ if(DPP_CORO)
 		endif()
 	endif()
 	target_compile_definitions(dpp PUBLIC DPP_CORO)
-	execute_process(WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
-					COMMAND php buildtools/make_struct.php "\\Dpp\\Generator\\CoroGenerator")
 endif()
 
 if(DPP_FORMATTERS)
@@ -411,19 +416,21 @@ if(DPP_FORMATTERS)
 endif()
 
 if (NOT BUILD_SHARED_LIBS)
-	add_library(dppstatic STATIC
+	if (HAVE_VOICE)
+		add_library(dppstatic STATIC
 			$<TARGET_OBJECTS:dpp>
 			$<TARGET_OBJECTS:hpke>
 			$<TARGET_OBJECTS:tls_syntax>
 			$<TARGET_OBJECTS:mls_vectors>
 			$<TARGET_OBJECTS:mlspp>
 			$<TARGET_OBJECTS:bytes>
-	)
-	if (HAVE_VOICE)
+		)
 		target_link_libraries(dppstatic ${ZLIB_LIBRARIES} ${OPENSSL_LIBRARIES} ${OPUS_LIBRARIES} -static-libgcc -static-libstdc++)
 	else()
+		add_library(dppstatic STATIC $<TARGET_OBJECTS:dpp>)
 		target_link_libraries(dppstatic ${ZLIB_LIBRARIES} ${OPENSSL_LIBRARIES})
 	endif()
+	target_include_directories(dppstatic PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../include")
 endif()
 
 if (DPP_BUILD_TEST)
@@ -465,10 +472,7 @@ if (NOT CONAN_EXPORTED)
 			configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../win32/bin/libssl-1_1-x64.dll" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" COPYONLY)
 			configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../win32/bin/opus.dll" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" COPYONLY)
 		else()
-			configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../win32/32/bin/zlib1.dll" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" COPYONLY)
-			configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../win32/32/bin/libcrypto-1_1.dll" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" COPYONLY)
-			configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../win32/32/bin/libssl-1_1.dll" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" COPYONLY)
-			configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../win32/32/bin/opus.dll" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" COPYONLY)
+			message(FATAL_ERROR "Windows 32-bit not supported")
 		endif()
 	endif()
 endif()
