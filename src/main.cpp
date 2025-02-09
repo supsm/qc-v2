@@ -370,10 +370,19 @@ int main()
 #endif
 	file_watcher watcher(config.log_path.c_str(), latest_log.filename().string(), FILE_WATCHER_USER_DATA);
 #undef FILE_WATCHER_USER_DATA
+
+	const auto update_date_tp = [&](bool latest_log_exists)
+	{
+		if (latest_log_exists)
+			{ parse_ctx.date_tp = file_modification_date(latest_log, config.logs_timezone); }
+	};
+
 	std::uintmax_t prev_size = 0;
 	// parse latest.log initially
 	{
-		const auto size = std::filesystem::exists(latest_log) ? std::filesystem::file_size(latest_log) : 0;
+		const bool latest_log_exists = std::filesystem::exists(latest_log);
+		const auto size = latest_log_exists ? std::filesystem::file_size(latest_log) : 0;
+		update_date_tp(latest_log_exists);
 		if (size > 0)
 		{
 			std::ifstream fin(latest_log, std::ios::binary);
@@ -403,12 +412,18 @@ int main()
 		}
 		if (res->state == file_watcher_state_t::data_read)
 		{
-			if (res->event_create || res->moved_to)
-				{ prev_size = 0; }
+			if (res->event_create)
+			{
+				update_date_tp(std::filesystem::exists(latest_log));
+				prev_size = 0;
+			}
+
 			if (res->event_create_moved)
 			{
 				std::scoped_lock lock(parse_data_ctx_mutex);
-				const auto size = std::filesystem::exists(latest_log) ? std::filesystem::file_size(latest_log) : 0;
+				const bool latest_log_exists = std::filesystem::exists(latest_log);
+				const auto size = latest_log_exists ? std::filesystem::file_size(latest_log) : 0;
+				update_date_tp(latest_log_exists);
 				if (size > 0)
 				{
 					std::cout << "WARNING: latest.log shouldn't be moved to (from another file), discarding data and reading entirely" << std::endl;
@@ -426,6 +441,7 @@ int main()
 				}
 				prev_size = size;
 			}
+
 			if (res->event_modify)
 			{
 				std::scoped_lock lock(parse_data_ctx_mutex);
@@ -454,6 +470,7 @@ int main()
 				}
 				prev_size = size;
 			}
+
 			if (res->moved_to)
 			{
 				std::string_view moved_to(res->moved_to->first.get(), res->moved_to->second);
